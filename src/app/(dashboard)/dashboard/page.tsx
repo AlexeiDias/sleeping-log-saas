@@ -16,6 +16,7 @@ type Baby = {
   id: string;
   name: string;
   dob: Timestamp;
+  parentEmail?: string; // ← optional to avoid errors for older entries
 };
 
 export default function DashboardPage() {
@@ -59,15 +60,24 @@ export default function DashboardPage() {
         <p>No babies yet. <Link href="/dashboard/add-baby" className="text-blue-600 underline">Add one?</Link></p>
       ) : (
         <ul className="space-y-4">
-          {babies.map(baby => (
-            <li key={baby.id} className="p-4 border rounded shadow-sm">
-              <h2 className="text-xl font-semibold">{baby.name}</h2>
-              <p>Date of Birth: {baby.dob.toDate().toLocaleDateString()}</p>
-              <Link href={`/dashboard/baby/${baby.id}`} className="text-blue-600 underline">
-                View Profile →
-              </Link>
-            </li>
-          ))}
+          {babies.map((baby) => (
+  <div key={baby.id} className="p-4 border rounded shadow-sm">
+    <h2 className="text-lg font-semibold">{baby.name}</h2>
+    <p className="text-sm text-gray-500">
+      🎂 {baby.dob.toDate().toLocaleDateString()}
+    </p>
+    <p className="text-sm text-gray-600">
+      👤 {baby.parentEmail || 'No parent email set'}
+    </p>
+    <Link
+      href={`/dashboard/baby/${baby.id}`}
+      className="text-blue-600 text-sm underline mt-2 inline-block"
+    >
+      View Profile →
+    </Link>
+  </div>
+))}
+
         </ul>
       )}
     </div>

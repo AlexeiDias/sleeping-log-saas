@@ -9,6 +9,8 @@ import { useRouter } from 'next/navigation';
 export default function AddBabyPage() {
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [user, setUser] = useState<any>(null);
@@ -43,14 +45,18 @@ export default function AddBabyPage() {
         dob: new Date(dob),
         createdBy: user.uid,
         createdAt: "[serverTimestamp()]", // don't log the actual value
+        parentEmail: parentEmail || null, // optional field
+
       });
   
       await addDoc(collection(db, 'babies'), {
         name,
         dob: Timestamp.fromDate(new Date(dob)),
         createdBy: user.uid,
-        createdAt: serverTimestamp(), // ← keep this inline!
+        parentEmail: user.email,          // ✅ save the parent's email
+        createdAt: serverTimestamp(),     // keep this inline
       });
+      
   
       setSuccess('👶 Baby added successfully!');
       setName('');
@@ -80,6 +86,16 @@ export default function AddBabyPage() {
         value={dob}
         onChange={(e) => setDob(e.target.value)}
       />
+      <div>
+  <label className="block text-sm font-medium">Parent Email (optional)</label>
+  <input
+    type="email"
+    value={parentEmail}
+    onChange={(e) => setParentEmail(e.target.value)}
+    className="mt-1 p-2 border rounded w-full"
+    placeholder="parent@example.com"
+  />
+</div>
 
       <button
         type="button"
