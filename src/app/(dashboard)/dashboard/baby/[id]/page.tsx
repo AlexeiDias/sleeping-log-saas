@@ -1,6 +1,6 @@
 'use client';
 import { useAuth } from '@/lib/useAuth';
-import { sendReport } from '@/lib/sendReport';
+import { sendReport, sendArchivedReport } from '@/lib/sendReport';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
@@ -25,6 +25,8 @@ type Baby = {
   createdBy: string;
   parentEmail?: string;
 };
+
+
 
 export default function BabyProfilePage() {
   const [sleepChecks, setSleepChecks] = useState<any[]>([]);
@@ -132,6 +134,18 @@ const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
       setSendingReport(false);
     }
   };
+
+  const handleSendArchivedReport = async (date: string) => {
+    if (!id) return;
+    try {
+      await sendArchivedReport({ babyId: id, date });
+      alert(`📧 Report for ${date} sent successfully!`);
+    } catch (error: any) {
+      console.error("Error sending report:", error);
+      alert(`❌ Failed to send report for ${date}: ${error.message || error}`);
+    }
+  };
+  
 
   if (loading) return <p className="p‑4">⏳ Loading baby profile...</p>;
   if (!baby) return <p className="p‑4">❌ Baby not found.</p>;
@@ -257,69 +271,50 @@ const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
               )}
             </tbody>
           </table>
-          {/* 🗃️ Sleep Log Archive */}
-{/* 🗃️ Sleep Log Archive */}
-<div className="mt-12">
-  <h2 className="text-xl font-semibold mb-4">🗃️ Sleep Log Archive</h2>
-
+          <div className="mt-10">
+  <h2 className="text-xl font-semibold mb-2">🗂️ Sleep Log Archive</h2>
   {Object.entries(logsByDate).map(([date, logs]) => (
-    <details
-      key={date}
-      className="mb-4 rounded border overflow-hidden bg-gray shadow-sm"
-    >
-      <summary className="cursor-pointer bg-gray-700 px-4 py-3 font-medium flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <span>{date}</span>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2 gap-2">
+    <div key={date} className="mb-6 border rounded p-4 shadow-sm bg-white">
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <h3 className="text-lg font-semibold">{new Date(date).toDateString()}</h3>
+        <div className="flex gap-2 flex-wrap">
           <button
-            onClick={() => window.print()}
-            className="text-sm bg-black border border-green-700 hover:bg-green-700 px-3 py-1.5 rounded"
+            onClick={() => handleSendArchivedReport(date)}
+            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
+          >
+            📧 Send Report
+          </button>
+          <button
+            onClick={() => window.print()} // You can enhance this later
+            className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm"
           >
             🖨️ Print
           </button>
-          <button
-            onClick={async () => {
-              try {
-                await sendReport({ babyId: id, date });
-                alert(`📧 Report for ${date} sent successfully!`);
-              } catch (err) {
-                console.error('Error sending report:', err);
-                alert(`❌ Failed to send report for ${date}`);
-              }
-            }}
-            className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded"
-          >
-            📧 Email
-          </button>
         </div>
-      </summary>
-
-      {/* Log Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[400px] border-t">
-          <thead className="bg-gray-700">
-            <tr>
-              <th className="text-left p-2 border">Timestamp</th>
-              <th className="text-left p-2 border">Position</th>
-              <th className="text-left p-2 border">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map((log) => (
-              <tr key={log.id}>
-                <td className="p-2 border">
-                  {log.timestamp?.toDate().toLocaleString()}
-                </td>
-                <td className="p-2 border">{log.position}</td>
-                <td className="p-2 border capitalize">{log.type}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
-    </details>
+
+      <table className="w-full text-sm mt-3 border">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="text-left p-2 border">Timestamp</th>
+            <th className="text-left p-2 border">Position</th>
+            <th className="text-left p-2 border">Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          {logs.map((log) => (
+            <tr key={log.id}>
+              <td className="p-2 border">{log.timestamp?.toDate().toLocaleString()}</td>
+              <td className="p-2 border">{log.position}</td>
+              <td className="p-2 border capitalize">{log.type}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   ))}
 </div>
+
 
 
         </div>
@@ -327,3 +322,5 @@ const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
     </div>
   );
 }
+
+

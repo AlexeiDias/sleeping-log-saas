@@ -6,3 +6,10 @@ export const sendReport = async ({ babyId, date }: { babyId: string; date?: stri
   const result = await callable({ babyId, date });
   return result.data;
 };
+
+
+
+export async function sendArchivedReport({ babyId, date }: { babyId: string, date: string }) {
+  const sendSleepLogReportForDate = httpsCallable(functions, "sendSleepLogReportForDate");
+  await sendSleepLogReportForDate({ babyId, date });
+}
