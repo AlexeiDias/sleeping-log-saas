@@ -4,6 +4,8 @@ import { sendReport, sendArchivedReport } from '@/lib/sendReport';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
+import { MobileActionBar } from '@/components/MobileActionBar';
+
 import {
   doc,
   getDoc,
@@ -99,6 +101,36 @@ const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
     return () => unsubscribe();
   }, [id]);
 
+  const [diaperLogs, setDiaperLogs] = useState<any[]>([]);
+
+useEffect(() => {
+  if (!id) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startOfDay = Timestamp.fromDate(today);
+
+  const q = query(
+    collection(db, 'diaperLogs'),
+    where('babyId', '==', id),
+    where('timestamp', '>=', startOfDay),
+    orderBy('timestamp', 'desc')
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const logs = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    setDiaperLogs(logs);
+  }, (err) => {
+    console.error('Error listening to diaperLogs:', err);
+  });
+
+  return () => unsubscribe();
+}, [id]);
+
+
   // Save baby info update
   const handleSave = async () => {
     if (!id) return;
@@ -151,7 +183,8 @@ const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
   if (!baby) return <p className="p‑4">❌ Baby not found.</p>;
 
   return (
-    <div className="p‑6">
+    <div className="p-6 pb-24">  {/* add pb-24 for space below */}
+
       <Link href="/dashboard" className="text‑blue‑600 underline">
         ← Back to Dashboard
       </Link>
@@ -272,9 +305,9 @@ const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
             </tbody>
           </table>
           <div className="mt-10">
-  <h2 className="text-xl font-semibold mb-2">🗂️ Sleep Log Archive</h2>
-  {Object.entries(logsByDate).map(([date, logs]) => (
-    <div key={date} className="mb-6 border rounded p-4 shadow-sm bg-white">
+      <h2 className="text-xl font-semibold mb-2">🗂️ Sleep Log Archive</h2>
+      {Object.entries(logsByDate).map(([date, logs]) => (
+      <div key={date} className="mb-6 border rounded p-4 shadow-sm bg-white">
       <div className="flex justify-between items-center flex-wrap gap-2">
         <h3 className="text-lg font-semibold">{new Date(date).toDateString()}</h3>
         <div className="flex gap-2 flex-wrap">
@@ -319,6 +352,28 @@ const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
 
         </div>
       </div>
+      {/* 🧷 Diaper Logs */}
+{diaperLogs.length > 0 && (
+  <div className="mt-6">
+    <h2 className="text-lg font-semibold mb-2">🧷 Diaper Changes</h2>
+    <ul className="space-y-2">
+      {diaperLogs.map((log) => (
+        <li
+          key={log.id}
+          className="bg-gray-100 rounded p-3 text-sm"
+        >
+          <div><strong>{log.type.toUpperCase()}</strong> — {log.note || 'No note'}</div>
+          <div className="text-xs text-gray-500">
+            {log.timestamp?.toDate().toLocaleTimeString()}
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
+
+      <MobileActionBar babyId={id} />
+
     </div>
   );
 }

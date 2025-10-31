@@ -72,6 +72,92 @@ export const sendSleepLogReport = functions.https.onCall(
   }
 );
 
+export const sendArchivedReport = functions.https.onCall(
+  async (data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+    }
+
+    const { babyId, date } = data; // Expects 'YYYY-MM-DD'
+
+    if (!babyId || !date) {
+      throw new functions.https.HttpsError("invalid-argument", "Missing babyId or date.");
+    }
+
+    const uid = context.auth.uid;
+    const babyDoc = await db.collection("babies").doc(babyId).get();
+    const baby = babyDoc.data();
+
+    if (!baby || !baby.parentEmail) {
+      throw new functions.https.HttpsError("not-found", "Baby or parent email not found.");
+    }
+
+    const start = new Date(`${date}T00:00:00`);
+    const end = new Date(`${date}T23:59:59`);
+    const startTimestamp = admin.firestore.Timestamp.fromDate(start);
+    const endTimestamp = admin.firestore.Timestamp.fromDate(end);
+
+    const fetchLogs = async (collectionName: string) => {
+      const snapshot = await db
+        .collection(collectionName)
+        .where("babyId", "==", babyId)
+        .where("timestamp", ">=", startTimestamp)
+        .where("timestamp", "<=", endTimestamp)
+        .orderBy("timestamp", "asc")
+        .get();
+
+      return snapshot.docs.map((doc) => doc.data());
+    };
+
+    const [sleepLogs, diaperLogs, feedingLogs, bottleLogs] = await Promise.all([
+      fetchLogs("sleepChecks"),
+      fetchLogs("diaperLogs"),
+      fetchLogs("feedingLogs"),
+      fetchLogs("bottleLogs"),
+    ]);
+
+    if (
+      sleepLogs.length === 0 &&
+      diaperLogs.length === 0 &&
+      feedingLogs.length === 0 &&
+      bottleLogs.length === 0
+    ) {
+      throw new functions.https.HttpsError("not-found", "No logs found for that date.");
+    }
+
+    const formatLogs = (label: string, logs: any[]) =>
+      logs.length
+        ? `\n\n📌 ${label}:\n` +
+          logs
+            .map((log: any) => {
+              const time = log.timestamp.toDate().toLocaleTimeString();
+              const extra = log.details || log.position || log.type || "";
+              return `- ${time}: ${extra}`;
+            })
+            .join("\n")
+        : "";
+
+    const reportBody = `👶 Report for ${baby.name} on ${date}:\n`
+      + formatLogs("Sleep Logs", sleepLogs)
+      + formatLogs("Diaper Changes", diaperLogs)
+      + formatLogs("Feedings", feedingLogs)
+      + formatLogs("Bottle Feeds", bottleLogs);
+
+    const mailOptions = {
+      from: `Sleep Log App <${gmailEmail}>`,
+      to: baby.parentEmail,
+      subject: `🗓️ Daily Care Report for ${baby.name} - ${date}`,
+      text: reportBody,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`📨 Archived report sent to ${baby.parentEmail}`);
+
+    return { success: true };
+  }
+);
+
+
 export const sendSleepLogReportForDate = functions.https.onCall(
   async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) {

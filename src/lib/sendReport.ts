@@ -9,7 +9,14 @@ export const sendReport = async ({ babyId, date }: { babyId: string; date?: stri
 
 
 
-export async function sendArchivedReport({ babyId, date }: { babyId: string, date: string }) {
-  const sendSleepLogReportForDate = httpsCallable(functions, "sendSleepLogReportForDate");
-  await sendSleepLogReportForDate({ babyId, date });
-}
+export const sendArchivedReport = async ({
+  babyId,
+  date,
+}: {
+  babyId: string;
+  date: string;
+}) => {
+  const send = httpsCallable(functions, "sendArchivedReport");
+  const res = await send({ babyId, date });
+  return res.data;
+};
