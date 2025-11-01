@@ -6,11 +6,12 @@ import {
   query,
   where,
   orderBy,
-  getDocs
+  getDocs,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { sendArchivedReport } from '@/lib/sendArchivedReport';
+import { sendArchivedReport } from '@/lib/sendReport';
 import Image from 'next/image';
+import Link from 'next/link';
 
 export default function ArchivePage({ params }: { params: { id: string } }) {
   const babyId = params.id;
@@ -21,9 +22,10 @@ export default function ArchivePage({ params }: { params: { id: string } }) {
     if (!babyId) return;
 
     async function fetchLogs() {
-      const collections = ['sleepChecks', 'diapers', 'feedings', 'bottles'];
+      const collections = ['sleepChecks', 'diaperLogs', 'feedingLogs', 'bottleLogs'];
       const results: Record<string, any[]> = {};
 
+      // Fetch logs from all collections
       for (const col of collections) {
         const q = query(
           collection(db, col),
@@ -34,13 +36,22 @@ export default function ArchivePage({ params }: { params: { id: string } }) {
         results[col] = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       }
 
-      // Group all by date
+      // Exclude today’s logs
+      const todayKey = new Date().toISOString().split('T')[0];
       const grouped: Record<string, any> = {};
+
       for (const col of collections) {
         for (const log of results[col]) {
           const dateKey = log.timestamp?.toDate().toISOString().split('T')[0];
+          if (dateKey === todayKey) continue; // ✅ skip today's logs
+
           if (!grouped[dateKey]) {
-            grouped[dateKey] = { sleepChecks: [], diapers: [], feedings: [], bottles: [] };
+            grouped[dateKey] = {
+              sleepChecks: [],
+              diaperLogs: [],
+              feedingLogs: [],
+              bottleLogs: [],
+            };
           }
           grouped[dateKey][col].push(log);
         }
@@ -66,63 +77,77 @@ export default function ArchivePage({ params }: { params: { id: string } }) {
   };
 
   return (
-    <div className="p-4 max-w-md mx-auto text-white">
-      <h1 className="text-2xl font-bold mb-4">🗂️ Daily Archive</h1>
-      {Object.entries(logsByDate).map(([date, logs]) => (
-        <div key={date} className="bg-gray-800 p-4 rounded-lg mb-6 shadow">
-          <div className="flex justify-between items-center mb-2">
-            <h2 className="text-xl font-semibold">{date}</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleSendReport(date)}
-                className="bg-blue-600 px-3 py-1 rounded text-sm"
-                disabled={sending}
-              >
-                📧 Send Report
-              </button>
-              <button
-                onClick={() => window.print()}
-                className="bg-green-600 px-3 py-1 rounded text-sm"
-              >
-                🖨️ Print
-              </button>
-            </div>
-          </div>
+    <div className="p-4 max-w-2xl mx-auto">
+      <div className="p-6">
+        <Link href={`/dashboard/baby/${params.id}`} className="text-blue-600 underline block mb-4">
+          ← Back to Baby Dashboard
+        </Link>
 
-          {['sleepChecks', 'diapers', 'feedings', 'bottles'].map((section) =>
-            logs[section]?.length > 0 ? (
-              <div key={section} className="mb-4">
-                <h3 className="text-lg font-semibold capitalize mt-2 mb-1">
-                  {section === 'sleepChecks' ? '🛏️ Sleep' :
-                   section === 'diapers' ? '💧 Diapers' :
-                   section === 'feedings' ? '🍽️ Feedings' : '🍼 Bottles'}
-                </h3>
-                <ul className="space-y-2 text-sm">
-                  {logs[section].map((log: any) => (
-                    <li key={log.id} className="border border-gray-700 p-2 rounded">
-                      <p><strong>⏰ Time:</strong> {log.timestamp?.toDate().toLocaleTimeString()}</p>
-                      {log.type && <p><strong>Type:</strong> {log.type}</p>}
-                      {log.menu && <p><strong>Menu:</strong> {log.menu}</p>}
-                      {log.volume && <p><strong>Volume:</strong> {log.volume} ml</p>}
-                      {log.quantity && <p><strong>Quantity:</strong> {log.quantity} g</p>}
-                      {log.note && <p><strong>📝 Note:</strong> {log.note}</p>}
-                      {log.imageUrl && (
-                        <Image
-                          src={log.imageUrl}
-                          alt="Log Image"
-                          width={150}
-                          height={150}
-                          className="mt-2 rounded"
-                        />
-                      )}
-                    </li>
-                  ))}
-                </ul>
+        <h1 className="text-2xl font-bold mb-6">🗂️ Daily Archive</h1>
+
+        {Object.entries(logsByDate).length === 0 && (
+          <p className="text-gray-600">No archived logs available yet.</p>
+        )}
+
+        {Object.entries(logsByDate).map(([date, logs]) => (
+          <div key={date} className="bg-white text-black p-5 rounded-lg mb-8 shadow">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">{new Date(date).toDateString()}</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSendReport(date)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
+                  disabled={sending}
+                >
+                  📧 Send Report
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm"
+                >
+                  🖨️ Print
+                </button>
               </div>
-            ) : null
-          )}
-        </div>
-      ))}
+            </div>
+
+            {[
+              ['sleepChecks', '🛏️ Sleep Logs'],
+              ['diaperLogs', '💧 Diaper Changes'],
+              ['feedingLogs', '🍽️ Feedings'],
+              ['bottleLogs', '🍼 Bottles'],
+            ].map(([key, label]) =>
+              logs[key]?.length > 0 ? (
+                <div key={key} className="mb-5">
+                  <h3 className="text-lg font-semibold mb-2">{label}</h3>
+                  <ul className="space-y-2 text-sm">
+                    {logs[key].map((log: any) => (
+                      <li
+                        key={log.id}
+                        className="border border-gray-300 bg-gray-50 p-3 rounded-md"
+                      >
+                        <p><strong>⏰ Time:</strong> {log.timestamp?.toDate().toLocaleTimeString()}</p>
+                        {log.type && <p><strong>Type:</strong> {log.type}</p>}
+                        {log.food && <p><strong>Food:</strong> {log.food}</p>}
+                        {log.note && <p><strong>📝 Note:</strong> {log.note}</p>}
+                        {log.amount && <p><strong>Amount:</strong> {log.amount} ml</p>}
+                        {log.imageUrl && (
+                          <Image
+                            src={log.imageUrl}
+                            alt="Uploaded log photo"
+                            width={120}
+                            height={120}
+                            className="mt-2 rounded"
+                          />
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

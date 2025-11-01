@@ -1,17 +1,18 @@
 'use client';
-import { useAuth } from '@/lib/useAuth';
-import { sendReport, sendArchivedReport } from '@/lib/sendReport';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/lib/useAuth';
+import { sendReport, sendArchivedReport } from '@/lib/sendReport';
+import { SleepMonitor } from '@/components/SleepMonitor';
 import { MobileActionBar } from '@/components/MobileActionBar';
 
 import {
+  Timestamp,
+  serverTimestamp,
   doc,
   getDoc,
   updateDoc,
-  Timestamp,
-  serverTimestamp,
   collection,
   query,
   where,
@@ -19,7 +20,6 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import Link from 'next/link';
-import { SleepMonitor } from '@/components/SleepMonitor';
 
 type Baby = {
   name: string;
@@ -28,21 +28,11 @@ type Baby = {
   parentEmail?: string;
 };
 
-
-
 export default function BabyProfilePage() {
-  const [sleepChecks, setSleepChecks] = useState<any[]>([]);
-
-// Group sleepChecks by date
-const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
-  const dateKey = log.timestamp?.toDate().toISOString().split('T')[0]; // 'YYYY-MM-DD'
-  if (!acc[dateKey]) acc[dateKey] = [];
-  acc[dateKey].push(log);
-  return acc;
-}, {});
-
-  const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+
+  // 🧠 State
   const [baby, setBaby] = useState<Baby | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -52,7 +42,39 @@ const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
   const [saving, setSaving] = useState(false);
   const [sendingReport, setSendingReport] = useState(false);
 
-  // Fetch baby info
+  const [sleepChecks, setSleepChecks] = useState<any[]>([]);
+  const [diaperLogs, setDiaperLogs] = useState<any[]>([]);
+  const [bottleLogs, setBottleLogs] = useState<any[]>([]);
+  const [feedingLogs, setFeedingLogs] = useState<any[]>([]);
+
+  // 📅 Key for today's date
+  const todayKey = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
+
+  // 📁 Group logs by date (helper)
+  const groupByDate = (logs: any[]) =>
+    logs.reduce((acc: Record<string, any[]>, log) => {
+      const date = log.timestamp?.toDate().toLocaleDateString('en-CA');
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(log);
+      return acc;
+    }, {});
+
+  const logsByDate = groupByDate(sleepChecks);
+  const bottlesByDate = groupByDate(bottleLogs);
+  const feedingsByDate = groupByDate(feedingLogs);
+  const diapersByDate = groupByDate(diaperLogs);
+
+  const sleepToday = logsByDate[todayKey] || [];
+  const bottlesToday = bottlesByDate[todayKey] || [];
+  const feedingsToday = feedingsByDate[todayKey] || [];
+  const diapersToday = diapersByDate[todayKey] || [];
+
+  const sleepArchive = Object.entries(logsByDate).filter(([date]) => date !== todayKey);
+  const bottlesArchive = Object.entries(bottlesByDate).filter(([date]) => date !== todayKey);
+  const feedingsArchive = Object.entries(feedingsByDate).filter(([date]) => date !== todayKey);
+  const diapersArchive = Object.entries(diapersByDate).filter(([date]) => date !== todayKey);
+
+  // 🔁 Load baby data
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -67,100 +89,77 @@ const logsByDate = sleepChecks.reduce((acc: Record<string, any[]>, log) => {
           setDob(data.dob.toDate().toISOString().split('T')[0]);
           setParentEmail(data.parentEmail || '');
         } else {
-          console.warn('No baby found for id:', id);
           setBaby(null);
         }
-      } catch (error) {
-        console.error('Failed to fetch baby:', error);
+      } catch (err) {
+        console.error('Failed to fetch baby:', err);
       } finally {
         setLoading(false);
       }
     })();
   }, [id]);
 
-  // Real‑time listener for sleepChecks
+  // 🔁 Load real-time logs
   useEffect(() => {
-    if (!id) {
-      setSleepChecks([]);
-      return;
-    }
-    const q = query(
-      collection(db, 'sleepChecks'),
-      where('babyId', '==', id),
-      orderBy('timestamp', 'desc')
+    if (!id) return;
+
+    const subscribeTo = (col: string, setter: any, extra?: any) => {
+      const q = query(
+        collection(db, col),
+        where('babyId', '==', id),
+        ...(extra || []),
+        orderBy('timestamp', 'desc')
+      );
+
+      return onSnapshot(q, (snap) => {
+        setter(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      });
+    };
+
+    const unsubSleep = subscribeTo('sleepChecks', setSleepChecks);
+    const unsubBottle = subscribeTo('bottleLogs', setBottleLogs);
+    const unsubFeeding = subscribeTo('feedingLogs', setFeedingLogs);
+    const unsubDiaper = subscribeTo(
+      'diaperLogs',
+      setDiaperLogs,
+      [where('timestamp', '>=', Timestamp.fromDate(new Date(new Date().setHours(0, 0, 0, 0))))]
     );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const checks = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setSleepChecks(checks);
-    }, (err) => {
-      console.error('Error listening to sleepChecks:', err);
-    });
-    return () => unsubscribe();
+
+    return () => {
+      unsubSleep();
+      unsubBottle();
+      unsubFeeding();
+      unsubDiaper();
+    };
   }, [id]);
 
-  const [diaperLogs, setDiaperLogs] = useState<any[]>([]);
-
-useEffect(() => {
-  if (!id) return;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const startOfDay = Timestamp.fromDate(today);
-
-  const q = query(
-    collection(db, 'diaperLogs'),
-    where('babyId', '==', id),
-    where('timestamp', '>=', startOfDay),
-    orderBy('timestamp', 'desc')
-  );
-
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    const logs = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-    setDiaperLogs(logs);
-  }, (err) => {
-    console.error('Error listening to diaperLogs:', err);
-  });
-
-  return () => unsubscribe();
-}, [id]);
-
-
-  // Save baby info update
+  // ✅ Save baby info
   const handleSave = async () => {
     if (!id) return;
     setSaving(true);
     try {
-      const docRef = doc(db, 'babies', id);
-      await updateDoc(docRef, {
+      await updateDoc(doc(db, 'babies', id), {
         name,
         dob: new Date(dob),
         parentEmail,
         updatedAt: serverTimestamp(),
       });
       setIsEditing(false);
-      setBaby((prev) => prev && { ...prev, name, dob: Timestamp.fromDate(new Date(dob)), parentEmail });
-    } catch (error) {
-      console.error('Error updating baby:', error);
+    } catch (err) {
+      console.error('Failed to save baby info:', err);
     } finally {
       setSaving(false);
     }
   };
 
-  // Send report
+  // 📧 Report functions
   const handleSendReport = async () => {
     if (!id) return;
     setSendingReport(true);
     try {
       await sendReport({ babyId: id });
-      alert('📧 Report sent successfully!');
-    } catch (error) {
-      console.error('Failed to send report:', error);
+      alert('📧 Report sent!');
+    } catch (e) {
       alert('❌ Failed to send report.');
     } finally {
       setSendingReport(false);
@@ -171,211 +170,158 @@ useEffect(() => {
     if (!id) return;
     try {
       await sendArchivedReport({ babyId: id, date });
-      alert(`📧 Report for ${date} sent successfully!`);
-    } catch (error: any) {
-      console.error("Error sending report:", error);
-      alert(`❌ Failed to send report for ${date}: ${error.message || error}`);
+      alert(`📧 Report for ${date} sent!`);
+    } catch (err) {
+      alert(`❌ Failed to send report for ${date}`);
     }
   };
-  
 
-  if (loading) return <p className="p‑4">⏳ Loading baby profile...</p>;
-  if (!baby) return <p className="p‑4">❌ Baby not found.</p>;
+  if (loading) return <p className="p-4">⏳ Loading...</p>;
+  if (!baby) return <p className="p-4">❌ Baby not found.</p>;
+
+  console.log('grouped feeding logs', feedingsByDate);
+  console.log('todayKey', todayKey);
+  console.log('feedingsToday', feedingsToday);
+
 
   return (
-    <div className="p-6 pb-24">  {/* add pb-24 for space below */}
-
-      <Link href="/dashboard" className="text‑blue‑600 underline">
+    <div className="p-6 pb-24">
+      <Link href="/dashboard" className="text-blue-600 underline">
         ← Back to Dashboard
       </Link>
 
-      <h1 className="text‑2xl font‑bold mt‑4">
+      <h1 className="text-2xl font-bold mt-4">
         {isEditing ? 'Edit Baby' : `${baby.name}’s Profile 👶`}
       </h1>
 
       {isEditing ? (
-        <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space‑y‑4 mt‑4 max‑w‑md">
+        <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-4 mt-4 max-w-md">
           <div>
-            <label className="block text‑sm font‑medium">Name</label>
-            <input
-              type="text"
-              className="mt‑1 p‑2 border rounded w‑full"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <label className="block text-sm font-medium">Name</label>
+            <input type="text" className="mt-1 p-2 border rounded w-full" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
 
           <div>
-            <label className="block text‑sm font‑medium">Date of Birth</label>
-            <input
-              type="date"
-              className="mt‑1 p‑2 border rounded w‑full"
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              required
-            />
+            <label className="block text-sm font-medium">Date of Birth</label>
+            <input type="date" className="mt-1 p-2 border rounded w-full" value={dob} onChange={(e) => setDob(e.target.value)} />
           </div>
 
           <div>
-            <label className="block text‑sm font‑medium">Parent Email</label>
-            <input
-              type="email"
-              className="mt‑1 p‑2 border rounded w‑full"
-              value={parentEmail}
-              onChange={(e) => setParentEmail(e.target.value)}
-              required
-            />
+            <label className="block text-sm font-medium">Parent Email</label>
+            <input type="email" className="mt-1 p-2 border rounded w-full" value={parentEmail} onChange={(e) => setParentEmail(e.target.value)} />
           </div>
 
-          <div className="flex gap‑2">
-            <button
-              type="submit"
-              className="bg‑green‑600 hover:bg‑green‑700 text‑white font‑semibold px‑4 py‑2 rounded"
-              disabled={saving}
-            >
+          <div className="flex gap-2">
+            <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded" disabled={saving}>
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
-            <button
-              type="button"
-              className="text‑gray‑600 underline"
-              onClick={() => setIsEditing(false)}
-            >
+            <button type="button" className="text-gray-600 underline" onClick={() => setIsEditing(false)}>
               Cancel
             </button>
           </div>
         </form>
       ) : (
-        <>
-          <p className="text‑gray‑700 mt‑2">Date of Birth: {baby.dob.toDate().toLocaleDateString()}</p>
-          <p className="text‑gray‑700 mt‑1">Parent Email: {baby.parentEmail || 'Not set'}</p>
-          <button
-            onClick={() => setIsEditing(true)}
-            className="mt‑4 text‑sm text‑blue‑600 underline"
-          >
-            ✏️ Edit Baby Info
-          </button>
-        </>
+        <div className="mt-2">
+          <p className="text-gray-700">Date of Birth: {baby.dob.toDate().toLocaleDateString()}</p>
+          <p className="text-gray-700 mt-1">Parent Email: {parentEmail || 'Not set'}</p>
+          <div className="flex gap-4 mt-4 flex-wrap">
+            <button onClick={() => setIsEditing(true)} className="text-blue-600 underline">
+              ✏️ Edit Baby Info
+            </button>
+            <Link href={`/dashboard/baby/${id}/archive`} className="text-blue-600 underline">
+              📁 View Archive
+            </Link>
+          </div>
+        </div>
       )}
 
-      {/* Sleep Monitor & Report Section */}
-      <div className="mt‑10 border‑t pt‑6">
-        <h2 className="text‑xl font‑semibold mb‑2">🛏️ Sleep Monitor</h2>
+      {/* 💤 Sleep Monitor */}
+      <div className="mt-10 border-t pt-6">
+        <h2 className="text-xl font-semibold mb-2">🛏️ Sleep Monitor</h2>
         <SleepMonitor babyId={id} caretakerId={user?.uid || ''} />
 
-        <div className="mt‑6">
+        <div className="mt-6">
           <button
             onClick={handleSendReport}
             disabled={sendingReport}
-            className="bg‑green‑600 hover:bg‑green‑700 text‑white font‑semibold px‑4 py‑2 rounded"
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
           >
             {sendingReport ? 'Sending…' : '📨 Send Sleep Log Report'}
           </button>
         </div>
       </div>
 
-      {/* Real‑time Sleep Logs */}
-      <div className="mt‑8">
-        <h3 className="text‑lg font‑medium mb‑2">📋 Check Log</h3>
-        <div className="overflow‑x‑auto">
-          <table className="w‑full text‑sm border">
-            <thead className="bg‑gray‑100">
-              <tr>
-                <th className="text‑left p‑2 border">Timestamp</th>
-                <th className="text‑left p‑2 border">Position</th>
-                <th className="text‑left p‑2 border">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sleepChecks.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="p‑2 text‑center text‑gray‑500">
-                    No checks logged yet
-                  </td>
-                </tr>
-              ) : (
-                sleepChecks.map((log) => (
-                  <tr key={log.id}>
-                    <td className="p‑2 border">{log.timestamp?.toDate().toLocaleString()}</td>
-                    <td className="p‑2 border">{log.position}</td>
-                    <td className="p‑2 border capitalize">{log.type}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-          <div className="mt-10">
-      <h2 className="text-xl font-semibold mb-2">🗂️ Sleep Log Archive</h2>
-      {Object.entries(logsByDate).map(([date, logs]) => (
-      <div key={date} className="mb-6 border rounded p-4 shadow-sm bg-white">
-      <div className="flex justify-between items-center flex-wrap gap-2">
-        <h3 className="text-lg font-semibold">{new Date(date).toDateString()}</h3>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => handleSendArchivedReport(date)}
-            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
-          >
-            📧 Send Report
-          </button>
-          <button
-            onClick={() => window.print()} // You can enhance this later
-            className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm"
-          >
-            🖨️ Print
-          </button>
-        </div>
-      </div>
+      {/* ✅ You can add today's log previews below this point */}
 
-      <table className="w-full text-sm mt-3 border">
-        <thead className="bg-gray-100">
-          <tr>
-            <th className="text-left p-2 border">Timestamp</th>
-            <th className="text-left p-2 border">Position</th>
-            <th className="text-left p-2 border">Type</th>
-          </tr>
-        </thead>
-        <tbody>
-          {logs.map((log) => (
-            <tr key={log.id}>
-              <td className="p-2 border">{log.timestamp?.toDate().toLocaleString()}</td>
-              <td className="p-2 border">{log.position}</td>
-              <td className="p-2 border capitalize">{log.type}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  ))}
-</div>
-
-
-
-        </div>
-      </div>
-      {/* 🧷 Diaper Logs */}
-{diaperLogs.length > 0 && (
-  <div className="mt-6">
-    <h2 className="text-lg font-semibold mb-2">🧷 Diaper Changes</h2>
+      {/* 💤 Sleep Checks Today */}
+{sleepToday.length > 0 && (
+  <div className="mt-8">
+    <h2 className="text-lg font-semibold mb-2">🛏️ Today's Sleep Checks</h2>
     <ul className="space-y-2">
-      {diaperLogs.map((log) => (
-        <li
-          key={log.id}
-          className="bg-gray-100 rounded p-3 text-sm"
-        >
-          <div><strong>{log.type.toUpperCase()}</strong> — {log.note || 'No note'}</div>
-          <div className="text-xs text-gray-500">
-            {log.timestamp?.toDate().toLocaleTimeString()}
-          </div>
+      {sleepToday.map((log) => (
+        <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
+          <div><strong>Position:</strong> {log.position}</div>
+          <div><strong>Type:</strong> {log.type}</div>
+          <div className="text-xs text-gray-500">{log.timestamp?.toDate().toLocaleString()}</div>
         </li>
       ))}
     </ul>
   </div>
 )}
 
-      <MobileActionBar babyId={id} />
 
+      {/* 🍽️ Feedings Today */}
+{feedingsToday.length > 0 && (
+  <div className="mt-8">
+    <h2 className="text-lg font-semibold mb-2">🍽️ Today's Feedings</h2>
+    <ul className="space-y-2">
+      {feedingsToday.map((log) => (
+        <li key={log.id} className="border p-3 rounded bg-white shadow-sm hover:bg-gray-50 text-sm text-gray-800">
+          <div><strong>Food:</strong> {log.food}</div>
+          <div><strong>Note:</strong> {log.note || 'No note'}</div>
+          <div className="text-xs text-gray-500">{log.timestamp?.toDate().toLocaleString()}</div>
+        </li>
+      ))}
+    </ul>
+  </div>
+
+  
+)}
+
+    {/* 🍼 Bottles Today */}
+{bottlesToday.length > 0 && (
+  <div className="mt-8">
+    <h2 className="text-lg font-semibold mb-2">🍼 Today's Bottles</h2>
+    <ul className="space-y-2">
+      {bottlesToday.map((log) => (
+        <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
+          <div><strong>Amount:</strong> {log.amount} ml</div>
+          <div><strong>Note:</strong> {log.note || 'No note'}</div>
+          <div className="text-xs text-gray-500">{log.timestamp?.toDate().toLocaleString()}</div>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
+
+    {/* 🧷 Diapers Today */}
+{diapersToday.length > 0 && (
+  <div className="mt-8">
+    <h2 className="text-lg font-semibold mb-2">🧷 Today's Diapers</h2>
+    <ul className="space-y-2">
+      {diapersToday.map((log) => (
+        <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
+          <div><strong>{log.type.toUpperCase()}</strong> — {log.note || 'No note'}</div>
+          <div className="text-xs text-gray-500">{log.timestamp?.toDate().toLocaleString()}</div>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
+
+
+  
+      <MobileActionBar babyId={id} />
     </div>
   );
 }
-
-

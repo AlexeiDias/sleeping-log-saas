@@ -31,6 +31,9 @@ export function MobileActionBar({ babyId }: Props) {
         🍼
         <span className="text-xs">Bottle</span>
       </button>
+      
+
     </div>
+    
   );
 }
