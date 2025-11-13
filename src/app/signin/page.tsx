@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, } from 'react';
 import { useRouter } from 'next/navigation';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import Link from 'next/link';
+
 
 export default function SignInPage() {
   const router = useRouter();
@@ -14,7 +16,7 @@ export default function SignInPage() {
   const handleLogin = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      router.push('/dashboard'); // redirect after login
+      router.push('/login-redirect'); // ✅ Now using role-based redirect
     } catch (err: any) {
       setError(err.message);
     }
@@ -47,7 +49,14 @@ export default function SignInPage() {
         </button>
 
         {error && <p className="text-red-500 mt-4">{error}</p>}
+        <Link href="/reset-password" className="text-blue-600 hover:underline">
+    Forgot your password?
+  </Link>
       </div>
+      
+  
+
+
     </div>
   );
 }

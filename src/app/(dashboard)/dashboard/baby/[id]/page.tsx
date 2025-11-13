@@ -6,6 +6,8 @@ import { useAuth } from '@/lib/useAuth';
 import { sendReport, sendArchivedReport } from '@/lib/sendReport';
 import { SleepMonitor } from '@/components/SleepMonitor';
 import { MobileActionBar } from '@/components/MobileActionBar';
+import LogThumbnail from '@/components/LogThumbnail';
+import ImageModal from '@/components/ImageModal';
 
 import {
   Timestamp,
@@ -46,6 +48,8 @@ export default function BabyProfilePage() {
   const [diaperLogs, setDiaperLogs] = useState<any[]>([]);
   const [bottleLogs, setBottleLogs] = useState<any[]>([]);
   const [feedingLogs, setFeedingLogs] = useState<any[]>([]);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
 
   // 📅 Key for today's date
   const todayKey = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
@@ -271,52 +275,91 @@ export default function BabyProfilePage() {
 
 
       {/* 🍽️ Feedings Today */}
+{/* 🍽️ Feedings Today */}
 {feedingsToday.length > 0 && (
   <div className="mt-8">
     <h2 className="text-lg font-semibold mb-2">🍽️ Today's Feedings</h2>
     <ul className="space-y-2">
       {feedingsToday.map((log) => (
-        <li key={log.id} className="border p-3 rounded bg-white shadow-sm hover:bg-gray-50 text-sm text-gray-800">
-          <div><strong>Food:</strong> {log.food}</div>
-          <div><strong>Note:</strong> {log.note || 'No note'}</div>
-          <div className="text-xs text-gray-500">{log.timestamp?.toDate().toLocaleString()}</div>
-        </li>
+        <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
+<div><strong>Food:</strong> {log.food}</div>
+<div><strong>Note:</strong> {log.note || 'No note'}</div>
+        <div className="text-xs text-gray-500">
+          {log.timestamp?.toDate().toLocaleString()}
+        </div>
+    
+        {log.photoUrl && (
+          <LogThumbnail
+            src={log.photoUrl}
+            size={72}
+            onClick={() => setSelectedImage(log.photoUrl)}
+          />
+        )}
+      </li>
       ))}
     </ul>
   </div>
-
-  
 )}
 
+
     {/* 🍼 Bottles Today */}
+{/* 🍼 Bottles Today */}
 {bottlesToday.length > 0 && (
   <div className="mt-8">
     <h2 className="text-lg font-semibold mb-2">🍼 Today's Bottles</h2>
     <ul className="space-y-2">
-      {bottlesToday.map((log) => (
-        <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
-          <div><strong>Amount:</strong> {log.amount} ml</div>
-          <div><strong>Note:</strong> {log.note || 'No note'}</div>
-          <div className="text-xs text-gray-500">{log.timestamp?.toDate().toLocaleString()}</div>
-        </li>
-      ))}
+    {bottlesToday.map((log) => (
+  <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
+    <div><strong>Amount:</strong> {log.amount} ml</div>
+    <div><strong>Note:</strong> {log.note || 'No note'}</div>
+    <div className="text-xs text-gray-500">
+      {log.timestamp?.toDate().toLocaleString()}
+    </div>
+
+    {log.photoUrl && (
+      <LogThumbnail
+        src={log.photoUrl}
+        size={72}
+        onClick={() => setSelectedImage(log.photoUrl)}
+      />
+    )}
+  </li>
+))}
+
     </ul>
   </div>
 )}
 
+
     {/* 🧷 Diapers Today */}
+{/* 🧷 Diapers Today */}
 {diapersToday.length > 0 && (
   <div className="mt-8">
     <h2 className="text-lg font-semibold mb-2">🧷 Today's Diapers</h2>
     <ul className="space-y-2">
       {diapersToday.map((log) => (
         <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
-          <div><strong>{log.type.toUpperCase()}</strong> — {log.note || 'No note'}</div>
-          <div className="text-xs text-gray-500">{log.timestamp?.toDate().toLocaleString()}</div>
-        </li>
+<div><strong>Type:</strong> {log.type}</div>
+<div><strong>Note:</strong> {log.note || 'No note'}</div>
+        <div className="text-xs text-gray-500">
+          {log.timestamp?.toDate().toLocaleString()}
+        </div>
+    
+        {log.photoUrl && (
+          <LogThumbnail
+            src={log.photoUrl}
+            size={72}
+            onClick={() => setSelectedImage(log.photoUrl)}
+          />
+        )}
+      </li>
       ))}
     </ul>
   </div>
+)}
+
+{selectedImage && (
+  <ImageModal imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />
 )}
 
 
