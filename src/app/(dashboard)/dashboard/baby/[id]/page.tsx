@@ -1,4 +1,5 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
@@ -8,6 +9,7 @@ import { SleepMonitor } from '@/components/SleepMonitor';
 import { MobileActionBar } from '@/components/MobileActionBar';
 import LogThumbnail from '@/components/LogThumbnail';
 import ImageModal from '@/components/ImageModal';
+import Link from 'next/link';
 
 import {
   Timestamp,
@@ -21,21 +23,21 @@ import {
   orderBy,
   onSnapshot,
 } from 'firebase/firestore';
-import Link from 'next/link';
 
 type Baby = {
   name: string;
   dob: Timestamp;
   createdBy: string;
   parentEmail?: string;
+  parentId?: string;
 };
 
 export default function BabyProfilePage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
-  // 🧠 State
   const [baby, setBaby] = useState<Baby | null>(null);
+  const [parentId, setParentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState('');
@@ -43,18 +45,14 @@ export default function BabyProfilePage() {
   const [parentEmail, setParentEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [sendingReport, setSendingReport] = useState(false);
-
   const [sleepChecks, setSleepChecks] = useState<any[]>([]);
   const [diaperLogs, setDiaperLogs] = useState<any[]>([]);
   const [bottleLogs, setBottleLogs] = useState<any[]>([]);
   const [feedingLogs, setFeedingLogs] = useState<any[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
+  const todayKey = new Date().toLocaleDateString('en-CA');
 
-  // 📅 Key for today's date
-  const todayKey = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
-
-  // 📁 Group logs by date (helper)
   const groupByDate = (logs: any[]) =>
     logs.reduce((acc: Record<string, any[]>, log) => {
       const date = log.timestamp?.toDate().toLocaleDateString('en-CA');
@@ -73,12 +71,7 @@ export default function BabyProfilePage() {
   const feedingsToday = feedingsByDate[todayKey] || [];
   const diapersToday = diapersByDate[todayKey] || [];
 
-  const sleepArchive = Object.entries(logsByDate).filter(([date]) => date !== todayKey);
-  const bottlesArchive = Object.entries(bottlesByDate).filter(([date]) => date !== todayKey);
-  const feedingsArchive = Object.entries(feedingsByDate).filter(([date]) => date !== todayKey);
-  const diapersArchive = Object.entries(diapersByDate).filter(([date]) => date !== todayKey);
-
-  // 🔁 Load baby data
+  // Load baby + parent info
   useEffect(() => {
     if (!id) return;
     setLoading(true);
@@ -92,6 +85,7 @@ export default function BabyProfilePage() {
           setName(data.name);
           setDob(data.dob.toDate().toISOString().split('T')[0]);
           setParentEmail(data.parentEmail || '');
+          setParentId(data.parentId || null);
         } else {
           setBaby(null);
         }
@@ -103,7 +97,7 @@ export default function BabyProfilePage() {
     })();
   }, [id]);
 
-  // 🔁 Load real-time logs
+  // Subscribe to logs
   useEffect(() => {
     if (!id) return;
 
@@ -114,7 +108,6 @@ export default function BabyProfilePage() {
         ...(extra || []),
         orderBy('timestamp', 'desc')
       );
-
       return onSnapshot(q, (snap) => {
         setter(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
       });
@@ -137,7 +130,6 @@ export default function BabyProfilePage() {
     };
   }, [id]);
 
-  // ✅ Save baby info
   const handleSave = async () => {
     if (!id) return;
     setSaving(true);
@@ -156,7 +148,6 @@ export default function BabyProfilePage() {
     }
   };
 
-  // 📧 Report functions
   const handleSendReport = async () => {
     if (!id) return;
     setSendingReport(true);
@@ -182,11 +173,6 @@ export default function BabyProfilePage() {
 
   if (loading) return <p className="p-4">⏳ Loading...</p>;
   if (!baby) return <p className="p-4">❌ Baby not found.</p>;
-
-  console.log('grouped feeding logs', feedingsByDate);
-  console.log('todayKey', todayKey);
-  console.log('feedingsToday', feedingsToday);
-
 
   return (
     <div className="p-6 pb-24">
@@ -235,6 +221,11 @@ export default function BabyProfilePage() {
             <Link href={`/dashboard/baby/${id}/archive`} className="text-blue-600 underline">
               📁 View Archive
             </Link>
+            {parentId && (
+              <Link href={`/dashboard/parents/${parentId}`} className="text-blue-600 underline">
+                🧑‍🍼 View Parent Details
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -243,7 +234,6 @@ export default function BabyProfilePage() {
       <div className="mt-10 border-t pt-6">
         <h2 className="text-xl font-semibold mb-2">🛏️ Sleep Monitor</h2>
         <SleepMonitor babyId={id} caretakerId={user?.uid || ''} />
-
         <div className="mt-6">
           <button
             onClick={handleSendReport}
@@ -255,115 +245,40 @@ export default function BabyProfilePage() {
         </div>
       </div>
 
-      {/* ✅ You can add today's log previews below this point */}
+      {/* 🍼 Logs for today */}
+      {[['🍽️ Feedings', feedingsToday], ['🍼 Bottles', bottlesToday], ['🧷 Diapers', diapersToday]].map(
+        ([label, logs]) =>
+          logs.length > 0 && (
+            <div key={label as string} className="mt-8">
+              <h2 className="text-lg font-semibold mb-2">{label as string} Today</h2>
+              <ul className="space-y-2">
+                {(logs as any[]).map((log) => (
+                  <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
+                    {log.food && <div><strong>Food:</strong> {log.food}</div>}
+                    {log.amount && <div><strong>Amount:</strong> {log.amount} ml</div>}
+                    {log.type && <div><strong>Type:</strong> {log.type}</div>}
+                    {log.note && <div><strong>Note:</strong> {log.note}</div>}
+                    <div className="text-xs text-gray-500">
+                      {log.timestamp?.toDate().toLocaleString()}
+                    </div>
+                    {log.photoUrl && (
+                      <LogThumbnail
+                        src={log.photoUrl}
+                        size={72}
+                        onClick={() => setSelectedImage(log.photoUrl)}
+                      />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+      )}
 
-      {/* 💤 Sleep Checks Today */}
-{sleepToday.length > 0 && (
-  <div className="mt-8">
-    <h2 className="text-lg font-semibold mb-2">🛏️ Today's Sleep Checks</h2>
-    <ul className="space-y-2">
-      {sleepToday.map((log) => (
-        <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
-          <div><strong>Position:</strong> {log.position}</div>
-          <div><strong>Type:</strong> {log.type}</div>
-          <div className="text-xs text-gray-500">{log.timestamp?.toDate().toLocaleString()}</div>
-        </li>
-      ))}
-    </ul>
-  </div>
-)}
+      {selectedImage && (
+        <ImageModal imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />
+      )}
 
-
-      {/* 🍽️ Feedings Today */}
-{/* 🍽️ Feedings Today */}
-{feedingsToday.length > 0 && (
-  <div className="mt-8">
-    <h2 className="text-lg font-semibold mb-2">🍽️ Today's Feedings</h2>
-    <ul className="space-y-2">
-      {feedingsToday.map((log) => (
-        <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
-<div><strong>Food:</strong> {log.food}</div>
-<div><strong>Note:</strong> {log.note || 'No note'}</div>
-        <div className="text-xs text-gray-500">
-          {log.timestamp?.toDate().toLocaleString()}
-        </div>
-    
-        {log.photoUrl && (
-          <LogThumbnail
-            src={log.photoUrl}
-            size={72}
-            onClick={() => setSelectedImage(log.photoUrl)}
-          />
-        )}
-      </li>
-      ))}
-    </ul>
-  </div>
-)}
-
-
-    {/* 🍼 Bottles Today */}
-{/* 🍼 Bottles Today */}
-{bottlesToday.length > 0 && (
-  <div className="mt-8">
-    <h2 className="text-lg font-semibold mb-2">🍼 Today's Bottles</h2>
-    <ul className="space-y-2">
-    {bottlesToday.map((log) => (
-  <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
-    <div><strong>Amount:</strong> {log.amount} ml</div>
-    <div><strong>Note:</strong> {log.note || 'No note'}</div>
-    <div className="text-xs text-gray-500">
-      {log.timestamp?.toDate().toLocaleString()}
-    </div>
-
-    {log.photoUrl && (
-      <LogThumbnail
-        src={log.photoUrl}
-        size={72}
-        onClick={() => setSelectedImage(log.photoUrl)}
-      />
-    )}
-  </li>
-))}
-
-    </ul>
-  </div>
-)}
-
-
-    {/* 🧷 Diapers Today */}
-{/* 🧷 Diapers Today */}
-{diapersToday.length > 0 && (
-  <div className="mt-8">
-    <h2 className="text-lg font-semibold mb-2">🧷 Today's Diapers</h2>
-    <ul className="space-y-2">
-      {diapersToday.map((log) => (
-        <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
-<div><strong>Type:</strong> {log.type}</div>
-<div><strong>Note:</strong> {log.note || 'No note'}</div>
-        <div className="text-xs text-gray-500">
-          {log.timestamp?.toDate().toLocaleString()}
-        </div>
-    
-        {log.photoUrl && (
-          <LogThumbnail
-            src={log.photoUrl}
-            size={72}
-            onClick={() => setSelectedImage(log.photoUrl)}
-          />
-        )}
-      </li>
-      ))}
-    </ul>
-  </div>
-)}
-
-{selectedImage && (
-  <ImageModal imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />
-)}
-
-
-  
       <MobileActionBar babyId={id} />
     </div>
   );

@@ -78,13 +78,43 @@ export default function AccountPage() {
     }
   };
 
+  const deleteCollection = async (collectionName: string) => {
+    const q = query(collection(db, collectionName), where('daycareId', '==', daycareId));
+    const snap = await getDocs(q);
+    const batchDeletes = snap.docs.map((docSnap) => deleteDoc(docSnap.ref));
+    await Promise.all(batchDeletes);
+  };
+
   const handleDelete = async () => {
     if (!daycareId) return;
-    if (!confirm('⚠️ Are you sure you want to delete this daycare? This cannot be undone.')) return;
+    const confirmDelete = confirm(
+      '⚠️ Are you sure you want to delete this daycare and all related data? This cannot be undone.'
+    );
+    if (!confirmDelete) return;
 
     try {
+      const loadingToast = toast.loading('Deleting all related data...');
+
+      // Delete related data
+      const collectionsToDelete = [
+        'babies',
+        'parents',
+        'staff',
+        'sleepChecks',
+        'feedingLogs',
+        'bottleLogs',
+        'diaperLogs',
+      ];
+
+      for (const collectionName of collectionsToDelete) {
+        await deleteCollection(collectionName);
+      }
+
+      // Delete the daycare document
       await deleteDoc(doc(db, 'daycares', daycareId));
-      toast.success('🗑️ Daycare deleted');
+      toast.dismiss(loadingToast);
+      toast.success('🗑️ Daycare and related data deleted');
+
       router.push('/');
     } catch (err) {
       console.error('Failed to delete daycare:', err);

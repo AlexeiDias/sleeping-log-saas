@@ -21,35 +21,35 @@ export default function LoginRedirectPage() {
     const checkRoleAndRedirect = async () => {
       const uid = user.uid;
 
-      // 1. Check if user is staff
-      const staffSnap = await getDocs(
-        query(collection(db, 'staff'), where('userId', '==', uid))
-      );
-      if (!staffSnap.empty) {
-        router.replace('/dashboard');
-        return;
-      }
+      // ✅ 1. Check if user created a daycare (admin)
+const daycareSnap = await getDocs(
+  query(collection(db, 'daycares'), where('createdBy', '==', uid))
+);
+if (!daycareSnap.empty) {
+  router.replace('/dashboard');
+  return;
+}
 
-      // 2. Check if user is parent
-      const parentSnap = await getDocs(
-        query(collection(db, 'parents'), where('userId', '==', uid))
-      );
-      if (!parentSnap.empty) {
-        router.replace('/dashboard/parent');
-        return;
-      }
+// 2. Check if user is staff
+const staffSnap = await getDocs(
+  query(collection(db, 'staff'), where('userId', '==', uid))
+);
+if (!staffSnap.empty) {
+  router.replace('/dashboard');
+  return;
+}
 
-      // 3. Check if user created a daycare (admin)
-      const daycareSnap = await getDocs(
-        query(collection(db, 'daycares'), where('createdBy', '==', uid))
-      );
-      if (!daycareSnap.empty) {
-        router.replace('/dashboard');
-        return;
-      }
+// 3. Check if user is parent
+const parentSnap = await getDocs(
+  query(collection(db, 'parents'), where('userId', '==', uid))
+);
+if (!parentSnap.empty) {
+  router.replace('/dashboard/parent');
+  return;
+}
 
-      // ❓ No match
-      router.replace('/');
+// ❓ No match
+router.replace('/');
     };
 
     checkRoleAndRedirect();

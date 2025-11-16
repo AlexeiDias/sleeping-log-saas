@@ -24,7 +24,7 @@ export default function SignInPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="p-8 bg-white shadow-md rounded w-full max-w-md">
+      <div className="p-8 bg-black shadow-md rounded w-full max-w-md">
         <h1 className="text-2xl font-bold mb-6">Sign In</h1>
 
         <input

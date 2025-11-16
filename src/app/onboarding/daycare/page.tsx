@@ -71,7 +71,8 @@ export default function DaycareSetupPage() {
     );
 
     setSaving(false);
-    router.push('/dashboard');
+// router.push(`/dashboard`);
+router.push(`/onboarding/next-steps`);
   };
 
   if (checkingExisting) {
