@@ -111,7 +111,7 @@ export default function DashboardPage() {
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-2">Your Babies 👶</h1>
 
-      <p className="text-gray-700 mb-4">
+      <p className="text-gray-200 mb-4">
         Total babies in your daycare: <strong>{babies.length}</strong>
       </p>
 
@@ -127,10 +127,10 @@ export default function DashboardPage() {
           {babies.map((baby) => (
             <div key={baby.id} className="p-4 border rounded shadow-sm">
               <h2 className="text-lg font-semibold">{baby.name}</h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-400">
                 🎂 {baby.dob.toDate().toLocaleDateString()}
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-400">
                 👤 {baby.parentEmail || 'No parent email set'}
               </p>
               <Link

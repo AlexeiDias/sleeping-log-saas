@@ -9,7 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.9",
     "@stripe/stripe-js": "^8.1.0",
+    "@tailwindcss/forms": "^0.5.10",
     "chart.js": "^4.5.1",
     "firebase": "^12.4.0",
     "next": "15.5.6",

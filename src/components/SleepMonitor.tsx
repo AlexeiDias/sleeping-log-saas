@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import PositionPickerModal from './PositionPickerModal';
+import BabyMoodModal from './BabyMoodModal';
 
 type Props = {
   babyId: string;
@@ -10,54 +12,68 @@ type Props = {
 };
 
 export function SleepMonitor({ babyId, caretakerId }: Props) {
-  const [timer, setTimer] = useState(0); // in seconds
+  const [timer, setTimer] = useState(0);
   const [running, setRunning] = useState(false);
   const [alarmTriggered, setAlarmTriggered] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const alarmAudio = useRef<HTMLAudioElement | null>(null);
 
-  // Start timer
-  const handleStart = async () => {
-    const position = prompt('🛌 What is the baby’s position? (Back / Side / Tummy)');
-    if (!position) return;
+  const [showPositionModal, setShowPositionModal] = useState(false);
+  const [showMoodModal, setShowMoodModal] = useState(false);
+  const [pendingStop, setPendingStop] = useState(false);
+  const [pendingPosition, setPendingPosition] = useState<string | null>(null);
 
-    setTimer(0);
-    setRunning(true);
-    setAlarmTriggered(false);
-
-    await logCheck(position, 'start');
+  // Ask position and start
+  const handleStart = () => {
+    setPendingStop(false);
+    setShowPositionModal(true);
   };
 
-  // Restart timer
-  const handleRestart = async () => {
-    const position = prompt('🛌 Baby checked! What is the position? (Back / Side / Tummy)');
-    if (!position) return;
-
-    setTimer(0);
-    setAlarmTriggered(false);
-
-    await logCheck(position, 'check');
+  const handleRestart = () => {
+    setPendingStop(false);
+    setShowPositionModal(true);
   };
 
-  // Stop timer
-  const handleStop = async () => {
-    const position = prompt('👶 Baby is awake. Final position?');
-    if (!position) return;
+  const handleStop = () => {
+    setPendingStop(true);
+    setShowPositionModal(true);
+  };
 
+  const handlePositionSelected = async (position: string) => {
+    if (!pendingStop) {
+      // Start or restart
+      if (!running) setRunning(true);
+      if (pendingStop === false) setTimer(0);
+      setAlarmTriggered(false);
+      await logCheck(position, running ? 'check' : 'start');
+    } else {
+      // Stop requires next step: mood
+      setPendingPosition(position);
+      setShowMoodModal(true);
+    }
+    setShowPositionModal(false);
+  };
+
+  const handleMoodSelected = async (mood: string) => {
+    if (!pendingPosition) return;
+
+    await logCheck(pendingPosition, 'stop', mood);
+    setTimer(0);
     setRunning(false);
-    setTimer(0);
     setAlarmTriggered(false);
 
-    await logCheck(position, 'stop');
+    setPendingPosition(null);
+    setPendingStop(false);
   };
 
-  const logCheck = async (position: string, type: 'start' | 'check' | 'stop') => {
+  const logCheck = async (position: string, type: 'start' | 'check' | 'stop', mood?: string) => {
     try {
       await addDoc(collection(db, 'sleepChecks'), {
         babyId,
         caretakerId,
         position,
         type,
+        mood: mood || null,
         timestamp: serverTimestamp(),
       });
     } catch (err) {
@@ -68,9 +84,7 @@ export function SleepMonitor({ babyId, caretakerId }: Props) {
   // Timer logic
   useEffect(() => {
     if (running) {
-      intervalRef.current = setInterval(() => {
-        setTimer((prev) => prev + 1);
-      }, 1000);
+      intervalRef.current = setInterval(() => setTimer((t) => t + 1), 1000);
     } else if (intervalRef.current) {
       clearInterval(intervalRef.current);
     }
@@ -80,7 +94,7 @@ export function SleepMonitor({ babyId, caretakerId }: Props) {
     };
   }, [running]);
 
-  // Alarm trigger after 10 minutes (600 seconds)
+  // Alarm trigger after 10 minutes
   useEffect(() => {
     if (timer >= 600 && !alarmTriggered) {
       setAlarmTriggered(true);
@@ -90,13 +104,12 @@ export function SleepMonitor({ babyId, caretakerId }: Props) {
 
   const playAlarm = () => {
     if (!alarmAudio.current) {
-      alarmAudio.current = new Audio('/alarm.mp3'); // Add your own alert sound here
+      alarmAudio.current = new Audio('/alarm.mp3');
     }
     alarmAudio.current.play().catch(console.error);
     alert('🚨 CHECK THE BABY! 10 minutes passed since last check.');
   };
 
-  // Format time
   const formatTime = (t: number) => {
     const min = Math.floor(t / 60).toString().padStart(2, '0');
     const sec = (t % 60).toString().padStart(2, '0');
@@ -110,25 +123,47 @@ export function SleepMonitor({ babyId, caretakerId }: Props) {
       </p>
 
       <div className="flex gap-4">
-        <button
-          onClick={handleStart}
-          className="bg-green-600 text-white px-4 py-2 rounded"
-        >
-          ▶️ Start
-        </button>
-        <button
-          onClick={handleRestart}
-          className="bg-yellow-500 text-white px-4 py-2 rounded"
-        >
-          🔁 Restart
-        </button>
-        <button
-          onClick={handleStop}
-          className="bg-red-600 text-white px-4 py-2 rounded"
-        >
-          ⏹️ Stop
-        </button>
+        {!running ? (
+          <button
+            onClick={handleStart}
+            className="bg-green-600 text-white px-4 py-2 rounded"
+          >
+            ▶️ Start
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={handleRestart}
+              className="bg-yellow-500 text-white px-4 py-2 rounded"
+            >
+              🔁 Restart
+            </button>
+            <button
+              onClick={handleStop}
+              className="bg-red-600 text-white px-4 py-2 rounded"
+            >
+              ⏹️ Stop
+            </button>
+          </>
+        )}
       </div>
+
+      <PositionPickerModal
+        isOpen={showPositionModal}
+        onClose={() => setShowPositionModal(false)}
+        onSelect={handlePositionSelected}
+        positions={
+          pendingStop
+            ? ['Back', 'Side', 'Tummy', 'Sitting', 'Standing']
+            : ['Back', 'Side', 'Tummy']
+        }
+      />
+
+      <BabyMoodModal
+        isOpen={showMoodModal}
+        onClose={() => setShowMoodModal(false)}
+        onSelect={handleMoodSelected}
+      />
     </div>
   );
 }

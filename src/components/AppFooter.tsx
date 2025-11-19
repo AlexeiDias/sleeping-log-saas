@@ -102,9 +102,7 @@ export default function AppFooter() {
         <Link href="/dashboard/staff/list" className="hover:underline">
           Staff
         </Link>
-        <Link href="/dashboard/parents/list" className="hover:underline">
-          Parents
-        </Link>
+        
         <button onClick={handleLogout} className="hover:underline text-left">
     Logout
   </button>

@@ -2,9 +2,9 @@ import Link from 'next/link';
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-gray-100 text-center px-6">
+    <main className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-center px-6">
       <h1 className="text-4xl font-bold mb-4">👶 Welcome to BabyLog</h1>
-      <p className="text-lg text-gray-700 mb-8 max-w-xl">
+      <p className="text-lg text-gray-200 mb-8 max-w-xl">
         A simple and powerful tool for daycares and parents to track baby logs, share updates, and manage routines.
       </p>
       

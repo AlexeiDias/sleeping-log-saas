@@ -2,257 +2,171 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useAuth } from '@/lib/useAuth';
 import { db } from '@/lib/firebase';
 import {
   Timestamp,
   addDoc,
   collection,
-  deleteDoc,
   doc,
+  deleteDoc,
+  onSnapshot,
+  orderBy,
+  query,
   updateDoc,
+  where,
 } from 'firebase/firestore';
-import { subscribeTo } from '@/lib/subscribeTo';
-import { groupByDate } from '@/lib/groupByDate';
-import { sendTodayReport } from '@/lib/sendReport';
-import { useUndoDelete } from '@/hooks/useUndoDelete';
+import { useAuth } from '@/lib/useAuth';
 import toast from 'react-hot-toast';
 
 type SleepCheck = {
   id: string;
   timestamp: Timestamp;
   position: string;
-  type: string;
+  type: 'start' | 'restart' | 'stop' | 'check';
   note?: string;
 };
 
-export default function SleepMonitor() {
-  const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
-
+export function SleepMonitor({ babyId, caretakerId }: { babyId: string; caretakerId: string }) {
   const [sleepChecks, setSleepChecks] = useState<SleepCheck[]>([]);
-  const [sending, setSending] = useState(false);
-  const [editingLog, setEditingLog] = useState<SleepCheck | null>(null);
-  const [editValues, setEditValues] = useState({
-    position: '',
-    type: '',
-    note: '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [position, setPosition] = useState('');
+  const [position, setPosition] = useState<string | null>(null);
   const [note, setNote] = useState('');
-  const [type, setType] = useState('check');
+  const [loading, setLoading] = useState(true);
 
-  const { triggerUndo } = useUndoDelete();
+  const sleepQuery = query(
+    collection(db, 'sleepChecks'),
+    where('babyId', '==', babyId),
+    orderBy('timestamp', 'desc')
+  );
 
   useEffect(() => {
-    if (!id) return;
-
-    const unsub = subscribeTo('sleepChecks', setSleepChecks, {
-      filters: [['babyId', '==', id]],
-      order: ['timestamp'],
+    const unsubscribe = onSnapshot(sleepQuery, (snapshot) => {
+      const logs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as SleepCheck));
+      setSleepChecks(logs);
+      setLoading(false);
     });
 
-    return () => unsub();
-  }, [id]);
+    return () => unsubscribe();
+  }, [babyId]);
 
-  const todayKey = new Date().toISOString().split('T')[0];
-  const logsByDate = groupByDate(sleepChecks);
-  const sleepToday = logsByDate[todayKey] || [];
+  const latestSleep = sleepChecks.find((log) => ['start', 'restart'].includes(log.type));
+  const isSleeping = latestSleep && !sleepChecks.some(
+    (log) => log.type === 'stop' && log.timestamp > latestSleep.timestamp
+  );
 
-  const handleSendReport = async () => {
-    setSending(true);
-    await toast.promise(sendTodayReport({ babyId: id }), {
-      loading: 'Sending...',
-      success: '✅ Report sent!',
-      error: '❌ Failed to send report',
-    });
-    setSending(false);
-  };
-
-  const handleDelete = async (logId: string, log: SleepCheck) => {
-    await toast.promise(deleteDoc(doc(db, 'sleepChecks', logId)), {
-      loading: 'Deleting...',
-      success: '🗑️ Log deleted',
-      error: '❌ Delete failed',
-    });
-    triggerUndo('sleepChecks', log);
-  };
-
-  const handleEdit = (log: SleepCheck) => {
-    setEditingLog(log);
-    setEditValues({
-      position: log.position,
-      type: log.type,
-      note: log.note || '',
-    });
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingLog) return;
-    setSaving(true);
-    await toast.promise(
-      updateDoc(doc(db, 'sleepChecks', editingLog.id), {
-        ...editValues,
-      }),
-      {
-        loading: 'Saving...',
-        success: '✅ Updated!',
-        error: '❌ Update failed',
-      }
-    );
-    setEditingLog(null);
-    setSaving(false);
-  };
-
-  const handleAddSleepCheck = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id || !user?.uid || !position.trim()) return;
+  const handleAction = async (actionType: 'start' | 'restart' | 'stop') => {
+    if (!position) {
+      toast.error('Please select baby position');
+      return;
+    }
 
     await toast.promise(
       addDoc(collection(db, 'sleepChecks'), {
-        babyId: id,
-        caretakerId: user.uid,
-        type,
+        babyId,
+        caretakerId,
         position,
         note,
+        type: actionType,
         timestamp: Timestamp.now(),
       }),
       {
         loading: 'Saving...',
-        success: '🛏️ Log saved',
-        error: '❌ Save failed',
+        success: `🛏️ ${actionType} logged`,
+        error: '❌ Failed to log',
       }
     );
 
-    setPosition('');
     setNote('');
+    setPosition(null);
   };
 
+  const handleDelete = async (logId: string) => {
+    await deleteDoc(doc(db, 'sleepChecks', logId));
+    toast.success('🗑️ Sleep log deleted');
+  };
+
+  const positionOptions = ['Back', 'Side', 'Tummy', 'Sitting', 'Standing'];
+
   return (
-    <div>
-      {/* Sleep input form */}
-      <form onSubmit={handleAddSleepCheck} className="bg-white shadow p-4 rounded mt-4 space-y-3">
-        <h2 className="text-md font-semibold">🛏️ Record Sleep Check</h2>
+    <div className="bg-white p-4 rounded shadow mt-4 space-y-4">
+      <h2 className="text-lg font-semibold">🛏️ Live Sleep Monitor</h2>
 
-        <div>
-          <label className="block text-sm font-medium">Position</label>
-          <input
-            type="text"
-            value={position}
-            onChange={(e) => setPosition(e.target.value)}
-            className="w-full border p-2 rounded"
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium">Note</label>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="w-full border p-2 rounded"
-          />
-        </div>
-
-        <button
-          type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          Save
-        </button>
-      </form>
-
-      {/* Send Report */}
-      <div className="mt-6 flex justify-between items-center">
-        <h2 className="text-lg font-semibold">🛏️ Today’s Sleep Logs</h2>
-        <button
-          onClick={handleSendReport}
-          className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
-          disabled={sending}
-        >
-          {sending ? 'Sending...' : '📤 Send Report'}
-        </button>
+      {/* Position Selector */}
+      <div className="flex flex-wrap gap-2">
+        {positionOptions.map((pos) => (
+          <button
+            key={pos}
+            onClick={() => setPosition(pos)}
+            className={`px-3 py-1 rounded border ${
+              position === pos ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
+            }`}
+          >
+            {pos}
+          </button>
+        ))}
       </div>
 
-      {/* Logs List */}
-      <ul className="mt-4 space-y-3">
-        {sleepToday.map((log) => (
-          <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm">
-            <div><strong>Position:</strong> {log.position}</div>
-            <div><strong>Type:</strong> {log.type}</div>
-            {log.note && <div><strong>Note:</strong> {log.note}</div>}
-            <div className="text-xs text-gray-500">
-              {log.timestamp?.toDate().toLocaleString()}
-            </div>
+      {/* Optional Note */}
+      <textarea
+        placeholder="Optional note"
+        className="w-full border rounded p-2"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
 
-            <div className="mt-2 flex gap-3 text-xs">
-              <button onClick={() => handleEdit(log)} className="text-blue-600 hover:underline">✏️ Edit</button>
-              <button onClick={() => handleDelete(log.id, log)} className="text-red-600 hover:underline">🗑️ Delete</button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {/* Sleep Monitor Buttons */}
+      <div className="flex gap-3">
+        {!isSleeping ? (
+          <button
+            onClick={() => handleAction('start')}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+          >
+            ▶️ Start Sleeping
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={() => handleAction('restart')}
+              className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+            >
+              🔄 Restart
+            </button>
+            <button
+              onClick={() => handleAction('stop')}
+              className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+            >
+              ⏹️ Stop
+            </button>
+          </>
+        )}
+      </div>
 
-      {/* Edit Modal */}
-      {editingLog && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-[90%] max-w-md">
-            <h2 className="text-lg font-semibold mb-4">✏️ Edit Sleep Log</h2>
-
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Position</label>
-              <input
-                type="text"
-                value={editValues.position}
-                onChange={(e) =>
-                  setEditValues({ ...editValues, position: e.target.value })
-                }
-                className="w-full border px-3 py-2 rounded"
-              />
-            </div>
-
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Type</label>
-              <input
-                type="text"
-                value={editValues.type}
-                onChange={(e) =>
-                  setEditValues({ ...editValues, type: e.target.value })
-                }
-                className="w-full border px-3 py-2 rounded"
-              />
-            </div>
-
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">Note</label>
-              <textarea
-                value={editValues.note}
-                onChange={(e) =>
-                  setEditValues({ ...editValues, note: e.target.value })
-                }
-                className="w-full border px-3 py-2 rounded"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setEditingLog(null)}
-                className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Current Status */}
+      {isSleeping && latestSleep && (
+        <p className="text-sm text-gray-600">
+          💤 Sleeping since: {latestSleep.timestamp.toDate().toLocaleTimeString()}
+        </p>
       )}
+
+      {/* Recent Logs */}
+      <div className="pt-4 border-t mt-4">
+        <h3 className="font-semibold mb-2">📝 Recent Logs</h3>
+        <ul className="space-y-2">
+          {sleepChecks.slice(0, 5).map((log) => (
+            <li key={log.id} className="border p-3 rounded text-sm shadow-sm bg-gray-50">
+              <div><strong>⏰ {log.timestamp.toDate().toLocaleString()}</strong></div>
+              <div>📍 Position: {log.position}</div>
+              <div>📘 Type: {log.type}</div>
+              {log.note && <div>📝 Note: {log.note}</div>}
+              <button
+                onClick={() => handleDelete(log.id)}
+                className="text-red-500 text-xs mt-1"
+              >
+                🗑️ Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

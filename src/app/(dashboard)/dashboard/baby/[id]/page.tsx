@@ -5,11 +5,13 @@ import { useParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/useAuth';
 import { sendReport, sendArchivedReport } from '@/lib/sendReport';
-import { SleepMonitor } from '@/components/SleepMonitor';
+import { SleepMonitor }  from '@/components/SleepMonitor';
 import { MobileActionBar } from '@/components/MobileActionBar';
 import LogThumbnail from '@/components/LogThumbnail';
 import ImageModal from '@/components/ImageModal';
 import Link from 'next/link';
+import RecentSleepLogs from '@/components/RecentSleepLogs';
+
 
 import {
   Timestamp,
@@ -231,49 +233,22 @@ export default function BabyProfilePage() {
       )}
 
       {/* 💤 Sleep Monitor */}
-      <div className="mt-10 border-t pt-6">
-        <h2 className="text-xl font-semibold mb-2">🛏️ Sleep Monitor</h2>
-        <SleepMonitor babyId={id} caretakerId={user?.uid || ''} />
-        <div className="mt-6">
-          <button
-            onClick={handleSendReport}
-            disabled={sendingReport}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
-          >
-            {sendingReport ? 'Sending…' : '📨 Send Sleep Log Report'}
-          </button>
-        </div>
-      </div>
+<div className="mt-10 border-t pt-6">
+  <h2 className="text-xl font-semibold mb-2">🛏️ Sleep Monitor</h2>
+  <SleepMonitor babyId={id} caretakerId={user?.uid || ''} />
+  <div className="mt-6">
+    <button
+      onClick={handleSendReport}
+      disabled={sendingReport}
+      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+    >
+      {sendingReport ? 'Sending…' : '📨 Send Sleep Log Report'}
+    </button>
+  </div>
+</div>
 
-      {/* 🍼 Logs for today */}
-      {[['🍽️ Feedings', feedingsToday], ['🍼 Bottles', bottlesToday], ['🧷 Diapers', diapersToday]].map(
-        ([label, logs]) =>
-          logs.length > 0 && (
-            <div key={label as string} className="mt-8">
-              <h2 className="text-lg font-semibold mb-2">{label as string} Today</h2>
-              <ul className="space-y-2">
-                {(logs as any[]).map((log) => (
-                  <li key={log.id} className="border p-3 rounded bg-white shadow-sm text-sm text-gray-800">
-                    {log.food && <div><strong>Food:</strong> {log.food}</div>}
-                    {log.amount && <div><strong>Amount:</strong> {log.amount} ml</div>}
-                    {log.type && <div><strong>Type:</strong> {log.type}</div>}
-                    {log.note && <div><strong>Note:</strong> {log.note}</div>}
-                    <div className="text-xs text-gray-500">
-                      {log.timestamp?.toDate().toLocaleString()}
-                    </div>
-                    {log.photoUrl && (
-                      <LogThumbnail
-                        src={log.photoUrl}
-                        size={72}
-                        onClick={() => setSelectedImage(log.photoUrl)}
-                      />
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )
-      )}
+{/* ✅ Show recent sleep logs */}
+<RecentSleepLogs babyId={id} />
 
       {selectedImage && (
         <ImageModal imageUrl={selectedImage} onClose={() => setSelectedImage(null)} />
